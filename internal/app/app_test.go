@@ -109,8 +109,9 @@ func TestAnalyzeDailyIdempotent(t *testing.T) {
 }
 
 // C4: agentsview 부재 → exit 0 + 리포트에 미설치 안내.
+// S1 회귀: 데이터가 없는데 "비효율 없음" 지침을 기입하면 측정 실패가 거짓 안심으로 둔갑한다.
 func TestAnalyzeWithoutAgentsview(t *testing.T) {
-	deps, out, _ := harness(t, false, nil)
+	deps, out, target := harness(t, false, nil)
 	if code := Analyze(AnalyzeOptions{}, deps); code != 0 {
 		t.Fatalf("미설치는 exit 0이어야 함(fail-open): %d\n%s", code, out.String())
 	}
@@ -120,6 +121,12 @@ func TestAnalyzeWithoutAgentsview(t *testing.T) {
 	}
 	if !strings.Contains(string(md), "agentsview 미설치") {
 		t.Fatalf("미설치 안내 누락:\n%s", md)
+	}
+	if !strings.Contains(string(md), "관리 블록 미갱신") {
+		t.Fatalf("블록 미갱신 주석 누락:\n%s", md)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("데이터 없이 관리 블록이 기입됨 — 거짓 안심(S1)")
 	}
 }
 
@@ -141,7 +148,7 @@ func TestAnalyzeDryRun(t *testing.T) {
 	}
 }
 
-// 수집 실패(CLI 에러)도 fail-open — 리포트에 사유가 남는다.
+// 수집 실패(CLI 에러)도 fail-open — 리포트에 사유가 남고, 블록·추세 기준선은 보존된다(S1).
 func TestAnalyzeCollectorFailure(t *testing.T) {
 	failing := func(args ...string) ([]byte, error) {
 		if args[0] == "daemon" {
@@ -149,13 +156,57 @@ func TestAnalyzeCollectorFailure(t *testing.T) {
 		}
 		return []byte("Error: database locked"), os.ErrPermission
 	}
-	deps, out, _ := harness(t, true, failing)
+	deps, out, target := harness(t, true, failing)
+	// 이전 성공 측정의 기준선을 심어두고, 실패 실행이 이를 0으로 덮지 않는지 본다.
+	pre := state.State{Schema: 1, PrevTokens: 5000, PrevCost: 3.3}
+	if err := pre.Save(); err != nil {
+		t.Fatal(err)
+	}
 	if code := Analyze(AnalyzeOptions{}, deps); code != 0 {
 		t.Fatalf("수집 실패도 exit 0이어야 함: %d\n%s", code, out.String())
 	}
 	md, _ := os.ReadFile(filepath.Join(os.Getenv("AGENTCOACH_DATA_DIR"), "reports", "2026-07-14.md"))
 	if !strings.Contains(string(md), "수집 실패") {
 		t.Fatalf("실패 사유 미기록:\n%s", md)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("수집 실패인데 관리 블록이 기입됨(S1)")
+	}
+	st, _ := state.Load()
+	if st.PrevTokens != 5000 || st.PrevCost != 3.3 {
+		t.Fatalf("실패 실행이 추세 기준선을 덮음: %+v", st)
+	}
+	if st.LastRunDate != "2026-07-14" {
+		t.Fatalf("실패해도 오늘 실행 완료는 기록돼야 함(알림 반복 방지): %+v", st)
+	}
+}
+
+// S4 회귀: 당일 분석 완료 후에도 dry-run은 미리보기를 낸다 (아무것도 안 바꾸므로).
+func TestDryRunAfterCompletedRun(t *testing.T) {
+	deps, out, _ := harness(t, true, fixtureRunner(t))
+	if code := Analyze(AnalyzeOptions{}, deps); code != 0 {
+		t.Fatal(out.String())
+	}
+	out.Reset()
+	if code := Analyze(AnalyzeOptions{DryRun: true}, deps); code != 0 {
+		t.Fatal(out.String())
+	}
+	if !strings.Contains(out.String(), "agentcoach:begin") {
+		t.Fatalf("당일 완료 후 dry-run이 미리보기를 내지 않음:\n%s", out.String())
+	}
+}
+
+// S2 회귀: 진행 중인 오늘의 부분 버킷과 구간 밖 날짜는 합계에서 제외된다.
+func TestClipDaysExcludesPartialToday(t *testing.T) {
+	daily := []agentsview.DailyUsage{
+		{Date: "2026-07-06", OutputTokens: 1}, // 구간 이전
+		{Date: "2026-07-07", OutputTokens: 2}, // 시작일 포함
+		{Date: "2026-07-13", OutputTokens: 3},
+		{Date: "2026-07-14", OutputTokens: 4}, // 오늘(부분) 제외
+	}
+	got := clipDays(daily, "2026-07-07", "2026-07-14")
+	if len(got) != 2 || got[0].Date != "2026-07-07" || got[1].Date != "2026-07-13" {
+		t.Fatalf("클리핑 불일치: %+v", got)
 	}
 }
 

@@ -73,10 +73,40 @@ func UpsertBlock(path string, block []string) (changed bool, err error) {
 			return false, fmt.Errorf("백업 실패로 쓰기 중단: %w", err) // 백업 없이는 원본을 건드리지 않는다
 		}
 	}
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := writeFileAtomic(path, []byte(newContent)); err != nil {
 		return false, fmt.Errorf("쓰기 실패: %w", err)
 	}
 	return true, nil
+}
+
+// writeFileAtomic은 같은 디렉토리의 임시 파일에 쓴 뒤 rename한다 —
+// truncate 후 쓰기 도중 크래시하면 사용자 전역 지침이 반토막으로 남는다.
+// os.Rename은 Windows에서도 기존 파일을 원자적으로 대체한다(MoveFileEx REPLACE_EXISTING).
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".agentcoach-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
 }
 
 // RemoveBlock은 관리 블록을 제거한다(uninstall 경로, 스펙 C9). 블록이 없으면 무동작.
@@ -105,7 +135,7 @@ func RemoveBlock(path string) (removed bool, err error) {
 	if err := backup(path, old); err != nil {
 		return false, fmt.Errorf("백업 실패로 제거 중단: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(newContent), 0o644); err != nil {
+	if err := writeFileAtomic(path, []byte(newContent)); err != nil {
 		return false, err
 	}
 	return true, nil

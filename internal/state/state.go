@@ -7,16 +7,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/nohdol97/agent-coach/internal/paths"
 )
 
 type State struct {
 	Schema int `json:"schema"`
-	// LastRunDate는 로컬 날짜("2006-01-02"). analyze의 하루 1회 멱등 판정에 쓴다(스펙 R6).
+	// LastRunDate는 로컬 날짜("2006-01-02"). 하루 1회 멱등 판정(스펙 R6)과
+	// 측정 구간의 시작일(완결된 일 단위 버킷 [LastRunDate, 오늘))을 겸한다.
 	LastRunDate string `json:"last_run_date"`
-	// Watermark는 지난 측정 시각(RFC3339). 이 이후의 세션만 다음 분석 대상이다.
+	// Watermark는 지난 실행 시각(RFC3339) — 진단·기록용.
 	Watermark string `json:"watermark"`
 	// 직전 구간 합계 — 추세(규칙 ①) 계산용.
 	PrevTokens int64   `json:"prev_tokens"`
@@ -51,11 +51,3 @@ func (s State) Save() error {
 	return os.WriteFile(paths.StatePath(), append(b, '\n'), 0o600)
 }
 
-// WatermarkTime은 워터마크를 시각으로 돌려준다. 비어 있거나 훼손이면 fallback을 쓴다.
-func (s State) WatermarkTime(fallback time.Time) time.Time {
-	t, err := time.Parse(time.RFC3339, s.Watermark)
-	if err != nil {
-		return fallback
-	}
-	return t
-}

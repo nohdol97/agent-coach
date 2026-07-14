@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestLoadSaveRoundTrip(t *testing.T) {
@@ -50,14 +49,3 @@ func TestLoadCorruptedResets(t *testing.T) {
 	}
 }
 
-func TestWatermarkTimeFallback(t *testing.T) {
-	fb := time.Date(2026, 7, 7, 0, 0, 0, 0, time.UTC)
-	if got := (State{}).WatermarkTime(fb); !got.Equal(fb) {
-		t.Fatalf("빈 워터마크는 fallback이어야 함: %v", got)
-	}
-	s := State{Watermark: "2026-07-14T09:30:00Z"}
-	want := time.Date(2026, 7, 14, 9, 30, 0, 0, time.UTC)
-	if got := s.WatermarkTime(fb); !got.Equal(want) {
-		t.Fatalf("워터마크 파싱 불일치: %v", got)
-	}
-}
