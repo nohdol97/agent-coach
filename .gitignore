@@ -1,0 +1,18 @@
+# 빌드 산출물
+/bin/
+/dist/
+agentcoach
+agentcoach.exe
+
+# Go
+*.test
+*.out
+coverage.*
+
+# IDE·OS
+.idea/
+.vscode/
+.DS_Store
+
+# 로컬 실험
+/_workspace/
