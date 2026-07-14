@@ -4,6 +4,7 @@
 package agentsview
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -18,10 +19,19 @@ type Client struct {
 	run Runner
 }
 
+// New의 러너는 stdout만 돌려준다. CLI는 JSON을 stdout에, 안내문
+// ("Excluded 2 sessions by default: …")을 stderr에 쓴다(v0.38.1 실측) —
+// CombinedOutput으로 합치면 안내문이 JSON을 오염시킨다(2026-07-14 스모크에서 발견).
 func New() *Client {
 	return &Client{run: func(args ...string) ([]byte, error) {
 		cmd := exec.Command("agentsview", args...)
-		return cmd.CombinedOutput()
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return stdout.Bytes(), fmt.Errorf("%w: %s", err, firstLine(stderr.Bytes()))
+		}
+		return stdout.Bytes(), nil
 	}}
 }
 
@@ -103,11 +113,23 @@ func (c *Client) Sessions(activeSince time.Time) (sessions []Session, truncated 
 	}
 	var payload struct {
 		Sessions []Session `json:"sessions"`
+		Total    int       `json:"total"`
 	}
-	if err := json.Unmarshal(out, &payload); err != nil {
+	if err := json.Unmarshal(extractJSON(out), &payload); err != nil {
 		return nil, false, fmt.Errorf("session list JSON 파싱 실패: %w", err)
 	}
-	return payload.Sessions, len(payload.Sessions) >= sessionPageLimit, nil
+	// total(전체 매칭 수)이 있으면 그것으로, 없으면 페이지 상한 도달로 절단을 판정한다.
+	truncated = payload.Total > len(payload.Sessions) || len(payload.Sessions) >= sessionPageLimit
+	return payload.Sessions, truncated, nil
+}
+
+// extractJSON은 stdout 선두에 섞일 수 있는 비JSON 안내문을 방어적으로 걷어낸다.
+// 스트림 분리로 현재는 발생하지 않지만, 상위 버전이 안내문을 stdout으로 옮겨도 견딘다.
+func extractJSON(b []byte) []byte {
+	if i := bytes.IndexAny(b, "{["); i > 0 {
+		return b[i:]
+	}
+	return b
 }
 
 // DailyUsage는 `usage daily --json`의 일별 합계다.
@@ -148,7 +170,7 @@ func (c *Client) UsageDaily(since string) (Usage, error) {
 			Models map[string]ModelPricing `json:"models"`
 		} `json:"pricing"`
 	}
-	if err := json.Unmarshal(out, &payload); err != nil {
+	if err := json.Unmarshal(extractJSON(out), &payload); err != nil {
 		return Usage{}, fmt.Errorf("usage daily JSON 파싱 실패: %w", err)
 	}
 	return Usage{Daily: payload.Daily, Models: payload.Pricing.Models}, nil
@@ -156,6 +178,9 @@ func (c *Client) UsageDaily(since string) (Usage, error) {
 
 func firstLine(b []byte) string {
 	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "(출력 없음)"
+	}
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]
 	}

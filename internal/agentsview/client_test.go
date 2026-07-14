@@ -88,6 +88,34 @@ func TestUsageDailyParsesMeasuredShape(t *testing.T) {
 	}
 }
 
+// 회귀: stdout 선두에 안내문이 섞여도 JSON을 파싱한다 (2026-07-14 스모크 발견 —
+// v0.38.1은 안내문을 stderr로 보내지만, 상위 버전이 stdout으로 옮겨도 견뎌야 한다).
+func TestExtractJSONTolerantOfLeadingNotice(t *testing.T) {
+	const fixture = "Excluded 2 sessions by default: 2 one-shot. Use --include-one-shot to include them.\n" +
+		`{"sessions":[{"id":"s1","peak_context_tokens":100}],"total":1}`
+	c := NewWithRunner(fixedRunner(fixture, nil))
+	got, truncated, err := c.Sessions(time.Now())
+	if err != nil {
+		t.Fatalf("안내문 혼입 파싱 실패: %v", err)
+	}
+	if len(got) != 1 || truncated {
+		t.Fatalf("결과 불일치: %d건 truncated=%v", len(got), truncated)
+	}
+}
+
+// total > 페이지 크기 → 절단 신호 (조용한 절단 금지).
+func TestSessionsTruncatedByTotal(t *testing.T) {
+	const fixture = `{"sessions":[{"id":"s1"}],"total":700,"next_cursor":"abc"}`
+	c := NewWithRunner(fixedRunner(fixture, nil))
+	_, truncated, err := c.Sessions(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated {
+		t.Fatal("total=700에 1건 반환은 절단이어야 함")
+	}
+}
+
 func TestSessionsErrorIncludesOutput(t *testing.T) {
 	c := NewWithRunner(fixedRunner("Error: database locked", errors.New("exit 1")))
 	if _, _, err := c.Sessions(time.Now()); err == nil {
