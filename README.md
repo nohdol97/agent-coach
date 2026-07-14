@@ -69,7 +69,11 @@ go test ./...   # 외부 의존 없음 — 표준 라이브러리만
 go vet ./...
 ```
 
-스펙: [docs/specs/2026-07-14-mvp.md](docs/specs/2026-07-14-mvp.md) (요구사항 R1~R9, 완료 기준 C1~C9).
+스펙:
+
+- [MVP](docs/specs/2026-07-14-mvp.md) — 구현됨 (요구사항 R1~R10, 완료 기준 C1~C10)
+- [v2 — LLM 코칭 개인화·주간 추세·효과 측정](docs/specs/2026-07-15-v2-personalized-coaching.md) — 초안
+- [v3 — opt-in 팀 집계·벤치마크](docs/specs/2026-07-15-v3-team-aggregation.md) — 초안
 
 ## 라이선스
 
