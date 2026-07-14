@@ -28,18 +28,15 @@
 - **관리 블록**: 사용자 파일에는 `<!-- agentcoach:begin -->` ~ `<!-- agentcoach:end -->` 센티널 사이만 쓴다. 쓰기 전 백업, 마커 훼손 시 쓰기 포기(fail-open). 블록은 15줄 상한 — 전역 지침은 모든 세션에 로드되므로 긴 코칭은 그 자체가 토큰 낭비다.
 - **데이터는 머신 밖으로 나가지 않는다**: 세션 로그에는 회사 데이터·시크릿이 섞일 수 있다. 분석·리포트 전부 로컬.
 
-## 설치 (비개발자 기준 2단계)
+## 설치 (비개발자 기준 — 다운로드하고 실행, 끝)
 
-1. [Releases](https://github.com/nohdol97/agent-coach/releases)에서 OS에 맞는 파일을 받아 압축을 풀고, `agentcoach`(Windows는 `agentcoach.exe`)를 적당한 위치에 둔다.
-2. 터미널(Windows는 PowerShell)에서 한 번 실행한다:
+1. [Releases](https://github.com/nohdol97/agent-coach/releases)에서 OS에 맞는 파일을 받아 압축을 푼다.
+2. `agentcoach`(Windows는 `agentcoach.exe`)를 **더블클릭**(또는 터미널에서 인자 없이 실행)한다.
 
-```
-agentcoach install
-```
-
-이것으로 끝이다 — agentsview가 없으면 자동 설치를 시도하고, OS 스케줄러에 매일 09:30 실행을 등록하고, 첫 분석까지 수행한다. 이후에는 매일 자동으로 분석·기입·알림이 이뤄진다.
+이것으로 끝이다 — 첫 실행이 자동으로 설치를 수행한다: agentsview가 없으면 설치를 시도하고, OS 스케줄러에 매일 09:30 실행을 등록하고, 첫 분석까지 마친 뒤 결과를 보여준다. 이후에는 매일 자동으로 분석·기입·알림이 이뤄지고, 다시 더블클릭하면 그 자리에서 즉시 재분석한다.
 
 ```
+agentcoach                          # (더블클릭과 동일) 미설치면 설치, 설치됐으면 즉시 분석
 agentcoach install --time 08:00     # 실행 시각 변경
 agentcoach analyze --force          # 지금 즉시 재분석
 agentcoach analyze --dry-run        # 파일을 건드리지 않고 미리보기
