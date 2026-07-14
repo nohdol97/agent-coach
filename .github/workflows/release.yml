@@ -1,0 +1,49 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: 크로스 컴파일 매트릭스 (스펙 R9)
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          build() {
+            local goos="$1" goarch="$2" ext="$3"
+            local out="dist/agentcoach_${VERSION}_${goos}_${goarch}"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "${out}/agentcoach${ext}" ./cmd/agentcoach
+            if [ "$goos" = "windows" ]; then
+              (cd dist && zip -qr "$(basename "$out").zip" "$(basename "$out")")
+            else
+              tar -czf "${out}.tar.gz" -C dist "$(basename "$out")"
+            fi
+            rm -r "$out"
+          }
+          build windows amd64 .exe
+          build windows arm64 .exe
+          build linux amd64 ""
+          build linux arm64 ""
+          build darwin arm64 ""
+          build darwin amd64 ""
+          (cd dist && sha256sum * > SHA256SUMS)
+      - name: GitHub Release 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "agent-coach ${GITHUB_REF_NAME}" \
+            --generate-notes
