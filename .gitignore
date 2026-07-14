@@ -1,8 +1,8 @@
 # 빌드 산출물
 /bin/
 /dist/
-agentcoach
-agentcoach.exe
+/agentcoach
+/agentcoach.exe
 
 # Go
 *.test
